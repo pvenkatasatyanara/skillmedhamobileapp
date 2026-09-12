@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { useAuth } from '../context/AuthContext';
@@ -30,7 +30,13 @@ export default function RootNavigator() {
   if (bootstrapping) {
     return (
       <View style={styles.splash}>
-        <ActivityIndicator size="large" color={colors.brand600} />
+        <Image
+          source={require('../../assets/skillmedha-logo.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+          accessibilityLabel="SkillMedha"
+        />
+        <ActivityIndicator size="large" color={colors.brand600} style={styles.splashSpinner} />
       </View>
     );
   }
@@ -71,6 +77,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.brand50,
+    backgroundColor: colors.white,
   },
+  splashLogo: { width: 220, height: 66, marginBottom: 24 },
+  splashSpinner: {},
 });

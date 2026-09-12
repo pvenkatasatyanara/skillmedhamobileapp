@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -54,10 +55,12 @@ export default function LoginScreen() {
         >
           {/* Brand */}
           <View style={styles.brandline}>
-            <View style={styles.logo}>
-              <Text style={styles.logoText}>SM</Text>
-            </View>
-            <Text style={styles.brandName}>SKILLMEDHA</Text>
+            <Image
+              source={require('../../assets/skillmedha-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+              accessibilityLabel="SkillMedha"
+            />
           </View>
 
           <Text style={styles.h1}>Welcome back</Text>
@@ -155,17 +158,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     backgroundColor: colors.brand50,
   },
-  brandline: { flexDirection: 'row', alignItems: 'center', gap: s(10), marginTop: s(40) },
-  logo: {
-    width: s(40),
-    height: s(40),
-    borderRadius: radius.sm,
-    backgroundColor: colors.brand700,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: { color: colors.white, fontWeight: '900', fontSize: font(14) },
-  brandName: { fontSize: font(20), fontWeight: '800', letterSpacing: -0.5, color: colors.ink },
+  brandline: { alignItems: 'flex-start', marginTop: s(40) },
+  logoImage: { width: s(240), height: s(72) },
 
   h1: {
     fontSize: font(27),
