@@ -4,22 +4,46 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, PageHeader, Card, SectionHeader, Chip, ProgressBar, PrimaryButton } from '../components';
 import { colors, spacing, radius, font, s } from '../theme';
+import { useAuth } from '../context/AuthContext';
+import api from '../api/client';
 import { formatCtc, stripHtml } from '../utils/format';
 import { isPlacementDrive, applicationStatusOf } from '../utils/jobs';
 
 const STATUS_COPY = {
   pending: 'Your application is under review. We will notify you once there is an update.',
+  applied: 'Your application has been submitted and is awaiting review.',
+  interview: 'You have an interview stage. Check notifications for details.',
   accepted: "Congratulations! You've been shortlisted. Watch for interview details.",
   rejected: 'This application was not successful this time. Keep applying!',
 };
 
 export default function JobDetailsScreen({ route }) {
+  const { token, user } = useAuth();
   const job = route.params?.job || {};
-  const [applied, setApplied] = useState(!job.isAssignedJob);
+  const studentId = route.params?.studentId || user?._id;
+  const [applied, setApplied] = useState(!route.params?.applied);
+  const [applying, setApplying] = useState(false);
 
   const drive = isPlacementDrive(job);
   const status = applied ? applicationStatusOf(job) : null;
-  const meta = [job.city, formatCtc(job.ctc), job.jobType].filter(Boolean).join(' • ');
+  const meta = [job.city, formatCtc(job.ctc), job.jobType || job.workModel].filter(Boolean).join(' • ');
+
+  const onApply = async () => {
+    if (!job._id || !studentId) {
+      Alert.alert('Cannot apply', 'Missing job or student information.');
+      return;
+    }
+    setApplying(true);
+    try {
+      const res = await api.applyJob(token, { jobId: job._id, studentId });
+      setApplied(true);
+      Alert.alert('Application submitted', res?.msg || 'Your application has been sent.');
+    } catch (e) {
+      Alert.alert('Apply failed', e?.message || 'Could not apply. Please try again.');
+    } finally {
+      setApplying(false);
+    }
+  };
   const description = stripHtml(job.jobDescription) || 'No description provided.';
   const rounds = Array.isArray(job.interviewRounds) ? job.interviewRounds : [];
   const perks = Array.isArray(job.supplementalPay) ? job.supplementalPay : [];
@@ -36,9 +60,9 @@ export default function JobDetailsScreen({ route }) {
               {[job.companyName, meta].filter(Boolean).join(' • ')}
             </Text>
             <View style={styles.badges}>
-              <Chip label={drive ? 'Placement Drive' : 'Company Opening'} variant={drive ? 'default' : 'green'} />
+              <Chip label={drive ? 'Created by TPO' : 'Company'} variant={drive ? 'default' : 'green'} />
               {!!job.sector && <Chip label={job.sector} variant="default" />}
-              {job.remoteWorkAllowed === 'yes' && <Chip label="Remote OK" variant="green" />}
+              {job.remoteworkAllowed === 'yes' && <Chip label="Remote OK" variant="green" />}
             </View>
           </Card>
         </View>
@@ -123,7 +147,7 @@ export default function JobDetailsScreen({ route }) {
         {perks.length > 0 && (
           <>
             <SectionHeader title="Perks & benefits" />
-            <View style={styles.perksWrap}>
+            <View style={styles.perkswrap}>
               {perks.map((p) => (
                 <Chip key={p} label={p} variant="default" style={{ marginBottom: s(8) }} />
               ))}
@@ -134,11 +158,9 @@ export default function JobDetailsScreen({ route }) {
         <View style={{ paddingHorizontal: spacing.gutter, marginTop: spacing.lg }}>
           <PrimaryButton
             title={applied ? `Applied • ${status?.label ?? 'Pending'}` : 'Apply Now'}
-            disabled={applied}
-            onPress={() => {
-              setApplied(true);
-              Alert.alert('Application submitted', 'Your application has been sent.');
-            }}
+            disabled={applied || applying}
+            loading={applying}
+            onPress={onApply}
           />
         </View>
       </ScrollView>
@@ -178,7 +200,7 @@ const styles = StyleSheet.create({
   roundNumText: { color: colors.brand700, fontWeight: '800', fontSize: font(12) },
   roundTitle: { fontSize: font(13.5), fontWeight: '700', color: colors.ink },
   roundSub: { fontSize: font(11.5), color: colors.muted, marginTop: s(2) },
-  perksWrap: {
+  perkswrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: s(8),

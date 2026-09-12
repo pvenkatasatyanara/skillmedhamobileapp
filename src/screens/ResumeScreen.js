@@ -12,11 +12,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 import { Screen, PageHeader, SectionHeader, ListCard, Chip, PrimaryButton } from '../components';
 import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import {buildResumeHtml} from '../utils/resumeHtml';
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '';
@@ -61,7 +64,7 @@ const TEMPLATES = [
   { key: 'creative', name: 'Creative', color: '#ec4899' },
 ];
 
-export default function ResumeScreen() {
+export default function ResumeScreen({navigation}) {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const bottomPad = Math.max(insets.bottom, Platform.OS === 'android' ? s(16) : 0) + spacing.md;
@@ -84,7 +87,7 @@ export default function ResumeScreen() {
   const atsScore = 72 + Math.min(eduCount + projCount, 3) * 3;
 
   const sections = [
-    { title: 'Personal Details', sub: d.email ? 'Complete' : 'Incomplete', done: !d.email },
+    { title: 'Personal Details', sub: d.email ? 'Complete' : 'Incomplete', done: !!d.email },
     { title: 'Education', sub: eduCount ? `${eduCount} added` : 'Not added', done: eduCount > 0 },
     { title: 'Projects', sub: projCount ? `${projCount} added` : 'Not added', done: projCount > 0 },
     { title: 'Experience', sub: expCount ? `${expCount} added` : 'Not added', done: expCount > 0 },
@@ -116,6 +119,21 @@ export default function ResumeScreen() {
   const onOption = (key) => {
     setMode(key);
     if (key === 'upload') pickResume();
+    if (key === 'ats') navigation.navigate('ATS');
+};
+
+const downloadPdf = async () => {
+  try {
+    const html = buildResumeHtml(d, template);
+    const { uri } = await Print.printToFileAsync({ html });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+    } else {
+      Alert.alert('Saved', `PDF generated at:\n${uri}`);
+    }
+  } catch (e) {
+    Alert.alert('Export failed', e?.message || 'Could not generate the PDF.');
+  }
   };
 
   return (
@@ -189,6 +207,13 @@ export default function ResumeScreen() {
                 );
               })}
             </ScrollView>
+            <View style={{ paddingHorizontal: spacing.gutter, marginTop: spacing.md }}>
+        <PrimaryButton
+          title="Continue to Editor →"
+          height={48}
+          onPress={() => navigation.navigate('ResumeEditor', { template })}
+        />
+</View>
           </>
         )}
 
@@ -256,8 +281,8 @@ export default function ResumeScreen() {
         {/* Editing sections - always available */}
         <SectionHeader
           title="Edit your resume"
-          actionLabel="+ Add"
-          onAction={() => Alert.alert('Add section', 'Add a new resume section.')}
+          actionLabel="Open editor"
+          onAction={() => navigation.navigate('ResumeEditor', { template })}
         />
         {sections.map((sec) => (
           <ListCard
@@ -273,7 +298,7 @@ export default function ResumeScreen() {
               />
             )}
             right={<Ionicons name="chevron-forward" size={s(18)} color="#cbd5e1" />}
-            onPress={() => Alert.alert(sec.title, 'Edit this section.')}
+            onPress={() => navigation.navigate('ResumeEditor', { template })}
           />
         ))}
       </ScrollView>
@@ -284,13 +309,13 @@ export default function ResumeScreen() {
           variant="secondary"
           height={48}
           style={{ flex: 1 }}
-          onPress={() => Alert.alert('Preview', 'Opening resume preview...')}
+          onPress={() => navigation.navigate('ResumePreview', { data: d, template })}
         />
         <PrimaryButton
           title="Download PDF"
           height={48}
           style={{ flex: 1 }}
-          onPress={() => Alert.alert('Download', 'Downloading PDF...')}
+          onPress={downloadPdf}
         />
       </View>
     </Screen>

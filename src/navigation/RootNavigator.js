@@ -9,10 +9,16 @@ import LoginScreen from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
 import CodingScreen from '../screens/CodingScreen';
+import PracticeSessionScreen from '../screens/PracticeSessionScreen';
 import MyAssessmentsScreen from '../screens/TestsScreen';
 import TestIntroScreen from '../screens/TestIntroScreen';
+import TestScreen from '../screens/TestScreen';
+import TestResultScreen from '../screens/TestResultScreen';
 import JobDetailScreen from '../screens/JobDetailScreen';
 import ResumeScreen from '../screens/ResumeScreen';
+import ResumeEditorScreen from '../screens/ResumeEditorScreen';
+import ResumePreviewScreen from '../screens/ResumePreviewScreen';
+import ATSScreen from '../screens/ATSScreen';
 import AIScreen from '../screens/AIScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 
@@ -38,10 +44,16 @@ export default function RootNavigator() {
           <Stack.Screen name="MainTabs" component={TabNavigator} />
           <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
           <Stack.Screen name="Coding" component={CodingScreen} />
+          <Stack.Screen name="PracticeSession" component={PracticeSessionScreen} />
           <Stack.Screen name="Assessments" component={MyAssessmentsScreen} />
           <Stack.Screen name="TestIntro" component={TestIntroScreen} />
+          <Stack.Screen name="Test" component={TestScreen} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="TestResult" component={TestResultScreen} options={{ gestureEnabled: false }} />
           <Stack.Screen name="JobDetail" component={JobDetailScreen} />
           <Stack.Screen name="Resume" component={ResumeScreen} />
+          <Stack.Screen name="ResumeEditor" component={ResumeEditorScreen} />
+          <Stack.Screen name="ResumePreview" component={ResumePreviewScreen} />
+          <Stack.Screen name="ATS" component={ATSScreen} />
           <Stack.Screen
             name="AI"
             component={AIScreen}

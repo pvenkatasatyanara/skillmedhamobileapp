@@ -53,7 +53,7 @@ export default function NotificationsScreen() {
         }
         renderItem={({ item }) => (
           <ListCard
-            title={item.title || 'Notice'}
+            title={stripHtml(item.title) || 'Notice'}
             subtitle={stripHtml(item.message) || item.type}
             iconVariant={chipVariantForPriority(item.priority)}
             renderIcon={(fg) => <Ionicons name={iconFor(item.type)} size={s(20)} color={fg} />}

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "skillmedha-mobileapp",
-    "slug": "skillmedha-mobileapp",
+    "name": "skillmedha_mobileapp",
+    "slug": "skillmedha_mobileapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -36,7 +36,8 @@
         {
           "icloudContainerEnvironment": "Production"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "eas": {

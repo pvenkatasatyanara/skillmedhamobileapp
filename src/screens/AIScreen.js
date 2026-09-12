@@ -21,6 +21,7 @@ import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { localInterviewAnalysis } from '../utils/interview';
+import { stripHtml } from '../utils/format';
 
 const MAX_SECONDS = 60;
 
@@ -38,7 +39,7 @@ const TABS = ['Your Answer', 'AI Report', 'Suggestions'];
 
 export default function TalkToAIScreen() {
   const navigation = useNavigation();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const cameraRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -146,23 +147,64 @@ export default function TalkToAIScreen() {
   const getFeedback = async () => {
     if (status !== 'recorded' || !videoUri || analyzing) return;
     setAnalyzing(true);
+    setTab('Your Answer');
     try {
-      const result = await api.analyzeInterviewAnswer({
-        token,
-        videoUri,
-        question,
-        studentId: user?._id,
+      const isMov = videoUri.toLowerCase().endsWith('.mov');
+      const file = {
+        uri: videoUri,
+        name: isMov ? 'answer.mov' : 'answer.mp4',
+        type: isMov ? 'video/quicktime' : 'video/mp4',
+      };
+
+      // 1) Transcribe the recording (server-side Whisper).
+      const up = await api.transcribeAudio(token, file);
+      const transcript = up?.transcription?.text || '';
+      const tErr = up?.transcription?.err;
+
+      if (!transcript) {
+        const fb = localInterviewAnalysis({ seconds });
+        fb.error = tErr || 'Could not transcribe your answer. Please try again.';
+        setFeedback(fb);
+        setTab('AI Report');
+        return;
+      }
+
+      // 2) AI feedback on the transcript.
+      let ai = {};
+      try {
+        ai = await api.checkEnglishText(token, { text: transcript, question });
+      } catch (e) {
+        ai = { err: e?.message };
+      }
+
+      if (ai?.err) {
+        setFeedback({ transcript, report: '', suggestions: [], error: ai.err });
+        setTab('Your Answer');
+        return;
+      }
+
+      const suggestions = [
+        ai.relevance && { label: 'Relevance', text: stripHtml(ai.relevance) },
+        ai.grammarAndSpellingCheck && { label: 'Grammar & Language', text: stripHtml(ai.grammarAndSpellingCheck) },
+        ai.clarityAndStyleSuggestions && { label: 'Clarity & Style', text: stripHtml(ai.clarityAndStyleSuggestions) },
+        ai.positiveFeedback && { label: 'Positive Highlights', text: stripHtml(ai.positiveFeedback) },
+      ].filter(Boolean);
+
+      setFeedback({
+        transcript,
+        report: stripHtml(ai.report),
+        suggestions,
+        reviewedText: ai.reviewedText ? stripHtml(ai.reviewedText) : null,
       });
-      setFeedback(result);
+      setTab('AI Report');
     } catch (e) {
-      // No backend configured (or the upload failed) -> on-device fallback so the
-      // user still gets actionable feedback.
+      // Network/other failure -> on-device coaching so the flow still completes.
       const fb = localInterviewAnalysis({ seconds });
-      if (e?.code !== 'NOT_CONFIGURED') fb.error = e?.message;
+      fb.error = e?.message;
       setFeedback(fb);
+      setTab('AI Report');
     } finally {
       setAnalyzing(false);
-      setTab('AI Report');
     }
   };
 
@@ -342,340 +384,354 @@ export default function TalkToAIScreen() {
               multiline
             />
           )}
+       
+       <View style={styles.qActions}>
+    <TouchableOpacity style={styles.qBtn} onPress={newQuestion}>
+        <Ionicons name="refresh" size={s(14)} color={colors.brand700} />
+        <Text style={styles.qBtnText}>New Question</Text>
+    </TouchableOpacity>
+    <TouchableOpacity
+        style={styles.qBtn}
+        onPress={() => {
+            setShowCustom((v) => !v);
+            resetAnswer();
+        }}
+    >
+        <Ionicons name="create-outline" size={s(14)} color={colors.brand700} />
+        <Text style={styles.qBtnText}>Custom Question</Text>
+    </TouchableOpacity>
+</View>
+</View>
 
-          <View style={styles.qActions}>
-            <TouchableOpacity style={styles.qBtn} onPress={newQuestion}>
-              <Ionicons name="refresh" size={s(14)} color={colors.brand700} />
-              <Text style={styles.qBtnText}>New Question</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.qBtn}
-              onPress={() => {
-                setShowCustom((v) => !v);
-                resetAnswer();
-              }}
-            >
-              <Ionicons name="create-outline" size={s(14)} color={colors.brand700} />
-              <Text style={styles.qBtnText}>Custom Question</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Answer / Report / Suggestions tabs */}
-        <View style={styles.card}>
-          <View style={styles.tabs}>
-            {TABS.map((t) => {
-              const active = tab === t;
-              return (
+{/* Answer / Report / Suggestions tabs */}
+<View style={styles.card}>
+    <View style={styles.tabs}>
+        {TABS.map((t) => {
+            const active = tab === t;
+            return (
                 <TouchableOpacity key={t} style={styles.tab} onPress={() => setTab(t)}>
-                  <Text style={[styles.tabText, active && styles.tabTextActive]}>{t}</Text>
-                  {active && <View style={styles.tabUnderline} />}
+                    <Text style={[styles.tabText, active && styles.tabTextActive]}>{t}</Text>
+                    {active && <View style={styles.tabUnderline} />}
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+            );
+        })}
+    </View>
 
-          <View style={styles.tabBody}>
-            {tab === 'Your Answer' && (
-              analyzing ? (
+    <View style={styles.tabBody}>
+        {tab === 'Your Answer' && (
+            analyzing ? (
                 <Loading text="Transcribing & analyzing your answer..." />
-        ) : feedback?.transcript ? (
-          <Text style={styles.bodyText}>{feedback.transcript}</Text>
-        ) : videoUri ? (
-          <Placeholder
-            icon="checkmark-circle-outline"
-            text={`Answer recorded (${seconds}s). Tap "Get AI Feedback" to transcribe & analyze.`}
-          />
-        ) : (
-          <Placeholder icon="mic-outline" text="Start recording to capture your answer" />
-        ))}
+            ) : feedback?.transcript ? (
+                <Text style={styles.bodyText}>{feedback.transcript}</Text>
+            ) : videoUri ? (
+                <Placeholder
+                    icon="checkmark-circle-outline"
+                    text={`Answer recorded (${seconds}s). Tap "Get AI Feedback" to transcribe & analyze.`}
+                />
+            ) : (
+                <Placeholder icon="mic-outline" text="Start recording to capture your answer" />
+            ))}
 
         {tab === 'AI Report' &&
-          (analyzing ? (
-            <Loading text="Analyzing..." />
-          ) : feedback ? (
-            <>
-              <View style={styles.scoreRow}>
-                <Text style={styles.scoreLabel}>Overall score</Text>
-                <Text style={styles.scoreValue}>
-                  {feedback.score != null ? `${feedback.score}/100` : '-'}
-                </Text>
-              </View>
-              {!!feedback.report && <Text style={styles.bodyText}>{feedback.report}</Text>}
-              {feedback.offline && (
-                <View style={styles.noteBox}>
-                  <Ionicons name="information-circle-outline" size={s(15)} color={colors.warnText} />
-                  <Text style={styles.noteText}>
-                    Offline coaching (no AI backend configured). Transcription needs a connected
-                    transcription service.
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <Placeholder icon="document-text-outline" text="Get AI feedback to see your report" />
-          ))}
+            (analyzing ? (
+                <Loading text="Analyzing..." />
+            ) : feedback ? (
+                <>
+                    {feedback.score != null && (
+                        <View style={styles.scoreRow}>
+                            <Text style={styles.scoreLabel}>Overall score</Text>
+                            <Text style={styles.scoreValue}>{feedback.score}/100</Text>
+                        </View>
+                    )}
+                    {!!feedback.report && <Text style={styles.bodyText}>{feedback.report}</Text>}
+                    {!feedback.report && !feedback.error && (
+                        <Placeholder icon="document-text-outline" text="No report returned." />
+                    )}
+                    {feedback.error && (
+                        <View style={styles.noteBox}>
+                            <Ionicons name="information-circle-outline" size={s(15)} color={colors.warnText} />
+                            <Text style={styles.noteText}>{feedback.error}</Text>
+                        </View>
+                    )}
+                    {feedback.offline && (
+                        <View style={styles.noteBox}>
+                            <Ionicons name="information-circle-outline" size={s(15)} color={colors.warnText} />
+                            <Text style={styles.noteText}>
+                                Showing offline coaching because AI feedback was unavailable.
+                            </Text>
+                        </View>
+                    )}
+                </>
+            ) : (
+                <Placeholder icon="document-text-outline" text="Get AI feedback to see your report" />
+            ))}
 
         {tab === 'Suggestions' &&
-          (analyzing ? (
-            <Loading text="Preparing suggestions..." />
-          ) : feedback?.suggestions?.length ? (
-            feedback.suggestions.map((sug, i) => (
-              <View key={i} style={styles.sugRow}>
-                <Ionicons name="bulb-outline" size={s(16)} color={colors.warn} />
-                <Text style={styles.sugText}>{sug}</Text>
-              </View>
-            ))
-          ) : (
-            <Placeholder icon="bulb-outline" text="Suggestions appear after AI feedback" />
-          ))}
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+            (analyzing ? (
+                <Loading text="Preparing suggestions..." />
+            ) : feedback?.suggestions?.length ? (
+                feedback.suggestions.map((sug, i) => (
+                    <View key={i} style={styles.sugRow}>
+                        <Ionicons name="bulb-outline" size={s(16)} color={colors.warn} />
+                        <View style={{ flex: 1 }}>
+                            {typeof sug !== 'string' && !!sug.label && (
+                                <Text style={styles.sugLabel}>{sug.label}</Text>
+                            )}
+                            <Text style={styles.sugText}>{typeof sug === 'string' ? sug : sug.text}</Text>
+                        </View>
+                    </View>
+                ))
+            ) : (
+                <Placeholder icon="bulb-outline" text="Suggestions appear after AI feedback" />
+            ))}
+    </View>
+</View>
+</ScrollView>
+</SafeAreaView>
+);
 }
 
 function Placeholder({ icon, text }) {
-  return (
-    <View style={styles.placeholder}>
-      <Ionicons name={icon} size={s(30)} color="#cbd5e1" />
-      <Text style={styles.placeholderText}>{text}</Text>
-    </View>
-  );
+    return (
+        <View style={styles.placeholder}>
+            <Ionicons name={icon} size={s(30)} color="#cbd5e1" />
+            <Text style={styles.placeholderText}>{text}</Text>
+        </View>
+    );
 }
 
 function Loading({ text }) {
-  return (
-    <View style={styles.placeholder}>
-      <ActivityIndicator color={colors.brand600} />
-      <Text style={styles.placeholderText}>{text}</Text>
-    </View>
-  );
+    return (
+        <View style={styles.placeholder}>
+            <ActivityIndicator color={colors.brand600} />
+            <Text style={styles.placeholderText}>{text}</Text>
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-    backgroundColor: colors.white,
-  },
-  back: {
-    width: s(38),
-    height: s(38),
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiIcon: {
-    width: s(34),
-    height: s(34),
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: font(15), fontWeight: '800', color: colors.ink },
-  subtitle: { fontSize: font(11), color: colors.muted, marginTop: s(1) },
+    safe: { flex: 1, backgroundColor: colors.bg },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.line,
+        backgroundColor: colors.white,
+    },
+    back: {
+        width: s(38),
+        height: s(38),
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: colors.line,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    aiIcon: {
+        width: s(34),
+        height: s(34),
+        borderRadius: radius.sm,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    title: { fontSize: font(15), fontWeight: '800', color: colors.ink },
+    subtitle: { fontSize: font(11), color: colors.muted, marginTop: s(1) },
 
-  card: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-  },
+    card: {
+        backgroundColor: colors.white,
+        borderWidth: 1,
+        borderColor: colors.line,
+        borderRadius: radius.lg,
+        padding: spacing.md,
+    },
 
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: s(6) },
-  statusDot: { width: s(8), height: s(8), borderRadius: s(4) },
-  statusText: { fontSize: font(12.5), fontWeight: '700', color: colors.ink },
-  timerPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(5),
-    backgroundColor: colors.bg,
-    borderRadius: radius.pill,
-    paddingHorizontal: s(10),
-    paddingVertical: s(4),
-  },
-  timerText: { fontSize: font(11.5), fontWeight: '700', color: colors.muted },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.sm,
+    },
+    statusLeft: { flexDirection: 'row', alignItems: 'center', gap: s(6) },
+    statusDot: { width: s(8), height: s(8), borderRadius: s(4) },
+    statusText: { fontSize: font(12.5), fontWeight: '700', color: colors.ink },
+    timerPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(5),
+        backgroundColor: colors.bg,
+        borderRadius: radius.pill,
+        paddingHorizontal: s(10),
+        paddingVertical: s(4),
+    },
+    timerText: { fontSize: font(11.5), fontWeight: '700', color: colors.muted },
 
-  videoBox: {
-    height: s(180),
-    borderRadius: radius.md,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: s(8),
-    overflow: 'hidden',
-  },
-  videoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: s(8), padding: spacing.md },
-  videoOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingVertical: s(6),
-    alignItems: 'center',
-    backgroundColor: 'rgba(15,23,42,0.45)',
-  },
+    videoBox: {
+        height: s(180),
+        borderRadius: radius.md,
+        backgroundColor: '#0f172a',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: s(8),
+        overflow: 'hidden',
+    },
+    videoPlaceholder: { alignItems: 'center', justifyContent: 'center', gap: s(8), padding: spacing.md },
+    videoOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingVertical: s(6),
+        alignItems: 'center',
+        backgroundColor: 'rgba(15,23,42,0.45)',
+    },
 
-  videoHint: { color: '#cbd5e1', fontSize: font(11.5), textAlign: 'center' },
-  recBadge: {
-    position: 'absolute',
-    top: s(10),
-    left: s(10),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(5),
-    backgroundColor: 'rgba(239,68,68,0.9)',
-    borderRadius: radius.pill,
-    paddingHorizontal: s(8),
-    paddingVertical: s(3),
-  },
-  recDot: { width: s(7), height: s(7), borderRadius: s(4), backgroundColor: colors.white },
-  recBadgeText: { color: colors.white, fontSize: font(10), fontWeight: '800', letterSpacing: 1 },
-  backToCam: {
-    position: 'absolute',
-    top: s(10),
-    right: s(10),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(5),
-    backgroundColor: 'rgba(15,23,42,0.65)',
-    borderRadius: radius.pill,
-    paddingHorizontal: s(10),
-    paddingVertical: s(4),
-  },
-  backToCamText: { color: colors.white, fontSize: font(10.5), fontWeight: '700' },
-  permBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: s(6),
-    backgroundColor: colors.brand600,
-    borderRadius: radius.md,
-    paddingHorizontal: s(14),
-    paddingVertical: s(8),
-    marginTop: s(4),
-  },
-  permBtnText: { color: colors.white, fontWeight: '800', fontSize: font(12) },
+    videoHint: { color: '#cbd5e1', fontSize: font(11.5), textAlign: 'center' },
+    recBadge: {
+        position: 'absolute',
+        top: s(10),
+        left: s(10),
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(5),
+        backgroundColor: 'rgba(239,68,68,0.9)',
+        borderRadius: radius.pill,
+        paddingHorizontal: s(8),
+        paddingVertical: s(3),
+    },
+    recDot: { width: s(7), height: s(7), borderRadius: s(4), backgroundColor: colors.white },
+    recBadgeText: { color: colors.white, fontSize: font(10), fontWeight: '800', letterSpacing: 1 },
+    backToCam: {
+        position: 'absolute',
+        top: s(10),
+        right: s(10),
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(5),
+        backgroundColor: 'rgba(15,23,42,0.65)',
+        borderRadius: radius.pill,
+        paddingHorizontal: s(10),
+        paddingVertical: s(4),
+    },
+    backToCamText: { color: colors.white, fontSize: font(10.5), fontWeight: '700' },
+    permBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: s(6),
+        backgroundColor: colors.brand600,
+        borderRadius: radius.md,
+        paddingHorizontal: s(14),
+        paddingVertical: s(8),
+        marginTop: s(4),
+    },
+    permBtnText: { color: colors.white, fontWeight: '800', fontSize: font(12) },
 
-  controls: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  ctrl: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: s(5),
-    height: s(42),
-    borderRadius: radius.md,
-  },
-  ctrlPrimary: { backgroundColor: colors.brand600 },
-  ctrlPrimaryText: { color: colors.white, fontWeight: '800', fontSize: font(12) },
-  ctrlGhost: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line },
-  ctrlGhostText: { color: colors.ink, fontWeight: '700', fontSize: font(12) },
-  ctrlDisabled: { opacity: 0.45 },
+    controls: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    ctrl: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: s(5),
+        height: s(42),
+        borderRadius: radius.md,
+    },
+    ctrlPrimary: { backgroundColor: colors.brand600 },
+    ctrlPrimaryText: { color: colors.white, fontWeight: '800', fontSize: font(12) },
+    ctrlGhost: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.line },
+    ctrlGhostText: { color: colors.ink, fontWeight: '700', fontSize: font(12) },
+    ctrlDisabled: { opacity: 0.45 },
 
-  feedbackBtn: {
-    marginTop: spacing.md,
-    height: s(48),
-    borderRadius: radius.md,
-    backgroundColor: colors.brand900,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: s(8),
-  },
-  feedbackBtnText: { color: colors.white, fontWeight: '800', fontSize: font(14) },
+    feedbackBtn: {
+        marginTop: spacing.md,
+        height: s(48),
+        borderRadius: radius.md,
+        backgroundColor: colors.brand900,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+         gap: s(8),
+    },
+feedbackBtnText: { color: colors.white, fontWeight: '800', fontSize: font(14) },
 
-  qHead: { flexDirection: 'row', alignItems: 'center', gap: s(6) },
-  qHeadText: { fontSize: font(13.5), fontWeight: '800', color: colors.ink },
-  qBox: {
-    marginTop: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.brand600,
-    backgroundColor: colors.brand50,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-  },
-  qText: { fontSize: font(14), fontWeight: '700', color: colors.ink },
-  customInput: {
-    marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontSize: font(13.5),
-    color: colors.ink,
-    minHeight: s(60),
-    textAlignVertical: 'top',
-  },
-  qActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  qBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: s(5),
-    height: s(38),
-    borderRadius: radius.md,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  qBtnText: { color: colors.brand700, fontWeight: '700', fontSize: font(11.5) },
+qHead: { flexDirection: 'row', alignItems: 'center', gap: s(6) },
+qHeadText: { fontSize: font(13.5), fontWeight: '800', color: colors.ink },
+qBox: {
+  marginTop: spacing.sm,
+  borderLeftWidth: 3,
+  borderLeftColor: colors.brand600,
+  backgroundColor: colors.brand50,
+  borderRadius: radius.sm,
+  padding: spacing.md,
+},
+qText: { fontSize: font(14), fontWeight: '700', color: colors.ink },
+customInput: {
+  marginTop: spacing.sm,
+  borderWidth: 1,
+  borderColor: colors.line,
+  borderRadius: radius.md,
+  padding: spacing.md,
+  fontSize: font(13.5),
+  color: colors.ink,
+  minHeight: s(60),
+  textAlignVertical: 'top',
+},
+qActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+qBtn: {
+  flex: 1,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+        gap: s(5),
+        height: s(38),
+        borderRadius: radius.md,
+        backgroundColor: colors.white,
+        borderWidth: 1,
+        borderColor: colors.line,
+    },
+    qBtnText: { color: colors.brand700, fontWeight: '700', fontSize: font(11.5) },
 
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.line },
-  tab: { flex: 1, alignItems: 'center', paddingBottom: spacing.sm },
-  tabText: { fontSize: font(12.5), fontWeight: '700', color: colors.muted },
-  tabTextActive: { color: colors.brand700 },
-  tabUnderline: {
-    position: 'absolute',
-    bottom: -1,
-    height: 2,
-    width: '70%',
-    backgroundColor: colors.brand600,
-    borderRadius: 2,
-  },
-  tabBody: { paddingTop: spacing.md, minHeight: s(120) },
-  bodyText: { fontSize: font(13.5), color: colors.ink, lineHeight: font(21) },
+    tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.line },
+    tab: { flex: 1, alignItems: 'center', paddingBottom: spacing.sm },
+    tabText: { fontSize: font(12.5), fontWeight: '700', color: colors.muted },
+    tabTextActive: { color: colors.brand700 },
+    tabUnderline: {
+        position: 'absolute',
+        bottom: -1,
+        height: 2,
+        width: '70%',
+        backgroundColor: colors.brand600,
+        borderRadius: 2,
+    },
+    tabBody: { paddingTop: spacing.md, minHeight: s(120) },
+    bodyText: { fontSize: font(13.5), color: colors.ink, lineHeight: font(21) },
 
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  scoreLabel: { fontSize: font(13), fontWeight: '700', color: colors.ink },
-  scoreValue: { fontSize: font(16), fontWeight: '900', color: colors.ok },
+    scoreRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.sm,
+    },
+    scoreLabel: { fontSize: font(13), fontWeight: '700', color: colors.ink },
+    scoreValue: { fontSize: font(16), fontWeight: '900', color: colors.ok },
 
-  noteBox: {
-    flexDirection: 'row',
-    gap: s(6),
-    alignItems: 'flex-start',
-    marginTop: spacing.md,
-    backgroundColor: colors.warnBg,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-  },
-  noteText: { flex: 1, fontSize: font(11.5), color: colors.warnText, lineHeight: font(17) },
+    noteBox: {
+        flexDirection: 'row',
+        gap: s(6),
+        alignItems: 'flex-start',
+        marginTop: spacing.md,
+        backgroundColor: colors.warnBg,
+        borderRadius: radius.sm,
+        padding: spacing.sm,
+    },
+    noteText: { flex: 1, fontSize: font(11.5), color: colors.warnText, lineHeight: font(17) },
 
-  sugRow: { flexDirection: 'row', gap: s(8), alignItems: 'flex-start', marginBottom: spacing.sm },
-  sugText: { flex: 1, fontSize: font(13), color: colors.ink, lineHeight: font(19) },
+    sugRow: { flexDirection: 'row', gap: s(8), alignItems: 'flex-start', marginBottom: spacing.md },
+    sugLabel: { fontSize: font(12.5), fontWeight: '800', color: colors.ink, marginBottom: s(2) },
+    sugText: { fontSize: font(13), color: colors.ink, lineHeight: font(19) },
 
-  placeholder: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl, gap: s(8) },
-  placeholderText: { fontSize: font(12.5), color: colors.muted, textAlign: 'center' },
+    placeholder: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl, gap: s(8) },
+    placeholderText: { fontSize: font(12.5), color: colors.muted, textAlign: 'center' },
 });

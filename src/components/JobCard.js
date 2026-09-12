@@ -5,17 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import Chip from './Chip';
 import { colors, radius, spacing, font, s } from '../theme';
 import { formatCtc, timeAgo, initialsOf } from '../utils/format';
-import { isPlacementDrive, applicationStatusOf } from '../utils/jobs';
+import { isPlacementDrive } from '../utils/jobs';
 
 /**
- * Single job tile used across the merged jobs list. Placement drives and
- * company openings are shown in one list and told apart with a label chip.
+ * Single job tile used across the merged jobs list. Placement drives (created by
+ * TPO) and company openings are shown in one list and told apart with a label.
  */
-export default function JobCard({ job, onPress }) {
+export default function JobCard({ job, applied, statusInfo, onPress }) {
   const drive = isPlacementDrive(job);
-  const applied = !!job.isAssignedJob;
-  const status = applied ? applicationStatusOf(job) : null;
-  const meta = [job.city, formatCtc(job.ctc), job.jobType].filter(Boolean).join(' • ');
+  const meta = [job.city, formatCtc(job.ctc), job.jobType || job.workModel].filter(Boolean).join(' • ');
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
@@ -33,11 +31,12 @@ export default function JobCard({ job, onPress }) {
         </Text>
 
         <View style={styles.chipsRow}>
-          <Chip
-            label={drive ? 'Placement Drive' : 'Company Opening'}
-            variant={drive ? 'default' : 'green'}
-          />
-          {status ? <Chip label={status.label} variant={status.variant} /> : null}
+          <Chip label={drive ? 'Created by TPO' : 'Company'} variant={drive ? 'default' : 'green'} />
+          {applied && statusInfo ? (
+            <Chip label={statusInfo.label} variant={statusInfo.variant} />
+          ) : (
+            <Chip label="Not Applied" variant="yellow" />
+          )}
           {job.createdAt ? <Text style={styles.time}>{timeAgo(job.createdAt)}</Text> : null}
         </View>
       </View>

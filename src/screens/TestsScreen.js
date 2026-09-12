@@ -1,28 +1,25 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import {
-  Screen,
-  PageHeader,
-  SegmentedControl,
-  ListCard,
-  Chip,
-  AssessmentCard,
-} from '../components';
+import { Screen, PageHeader, SegmentedControl, ListCard, Chip, AssessmentCard } from '../components';
 import { LoadingState, ErrorState, EmptyState } from '../components/StatePlaceholder';
-import { spacing, s } from '../theme';
+import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { formatTestDuration, countTestQuestions, formatScore, timeAgo } from '../utils/format';
+import { formatScore, timeAgo } from '../utils/format';
+import { testDurationLabel, testQuestionCount, isTestExpired, isTestActive } from '../utils/tests';
 
 const TABS = ['My Tests', 'Job Assessments'];
+const FILTERS = ['All', 'Active', 'Expired', 'Results'];
 
 export default function MyAssessmentsScreen({ navigation }) {
   const { token, user } = useAuth();
   const [tab, setTab] = useState('My Tests');
-  const [assigned, setAssigned] = useState([]);
-  const [completed, setCompleted] = useState([]);
+  const [filter, setFilter] = useState('All');
+  const [tests, setTests] = useState([]);
+  const [assessments, setAssessments] = useState([]);
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -30,14 +27,16 @@ export default function MyAssessmentsScreen({ navigation }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [aRes, cRes] = await Promise.allSettled([
+      const [tRes, aRes, rRes] = await Promise.allSettled([
+        api.getAssignedTests(token, { limit: 30, studentId: user?._id }),
         api.getAssignedAssessments(token, { page: 1, limit: 20 }),
         user?._id ? api.getRecentTestResults(token, user._id) : Promise.resolve({ data: [] }),
       ]);
-      if (aRes.status === 'fulfilled') setAssigned(aRes.value?.data || []);
-      if (cRes.status === 'fulfilled') setCompleted(dedupeResults(cRes.value?.data || []));
-      if (aRes.status === 'rejected' && cRes.status === 'rejected') {
-        setError(aRes.reason?.message || 'Could not load assessments.');
+      if (tRes.status === 'fulfilled') setTests(tRes.value?.tests || []);
+      if (aRes.status === 'fulfilled') setAssessments(aRes.value?.data || []);
+      if (rRes.status === 'fulfilled') setResults(dedupeResults(rRes.value?.data || []));
+      if (tRes.status === 'rejected' && aRes.status === 'rejected') {
+        setError(tRes.reason?.message || 'Could not load assessments.');
       }
     } finally {
       setLoading(false);
@@ -49,21 +48,40 @@ export default function MyAssessmentsScreen({ navigation }) {
     load();
   }, [load]);
 
-  const data = tab === 'Job Assessments' ? assigned : completed;
+  const base = tab === 'My Tests' ? tests : assessments;
 
-  const renderJobAssessment = (item) => (
+  const filtered = useMemo(() => {
+    if (filter === 'Active') return base.filter(isTestActive);
+    if (filter === 'Expired') return base.filter(isTestExpired);
+    return base; // All
+  }, [base, filter]);
+
+  const counts = useMemo(
+    () => ({
+      All: base.length,
+      Active: base.filter(isTestActive).length,
+      Expired: base.filter(isTestExpired).length,
+      Results: results.length,
+    }),
+    [base, results]
+  );
+
+  const startTest = (item, kind) => navigation.navigate('TestIntro', { test: item, kind });
+
+  const renderCard = (item) => (
     <AssessmentCard
       title={item.title || item.jobTitle}
-      description={item.shortDescription}
-      questions={countTestQuestions(item)}
-      duration={formatTestDuration(item)}
-      maxAttempts={item.honestRespondent?.maxAttempts || item.hrt?.maxLeaves}
+      description={item.shortDescription || item.longDescription}
+      questions={testQuestionCount(item)}
+      duration={testDurationLabel(item)}
+      level={isTestExpired(item) ? 'Expired' : 'All Levels'}
+      maxAttempts={item.honestRespondent?.maxAttempts || item.attemptGeneration}
       seed={item._id || item.title}
-      onStart={() => navigation.navigate('TestIntro', { test: item })}
+      onStart={() => startTest(item, tab === 'My Tests' ? 'test' : 'job')}
     />
   );
 
-  const renderMyTest = (item) => {
+  const renderResult = (item) => {
     const { correct, total, final, pct } = formatScore(item);
     const scoreLabel = pct != null ? `${pct}%` : `${final ?? 0} pts`;
     const variant = pct == null ? 'default' : pct >= 60 ? 'green' : pct >= 40 ? 'yellow' : 'red';
@@ -80,12 +98,32 @@ export default function MyAssessmentsScreen({ navigation }) {
     );
   };
 
+  const showResults = filter === 'Results';
+  const data = loading || error ? [] : showResults ? results : filtered;
+
   return (
     <Screen edges={['top']}>
       <PageHeader title="My Assessments" size="lg" showBack={false} />
       <SegmentedControl options={TABS} value={tab} onChange={setTab} />
+
+      {/* Filter chips */}
+      <View style={styles.filters}>
+        {FILTERS.map((f) => {
+          const active = filter === f;
+          return (
+            <TouchableOpacity key={f} onPress={() => setFilter(f)} activeOpacity={0.8}>
+              <View style={[styles.filterChip, active && styles.filterChipActive]}>
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  {f} {counts[f] != null ? counts[f] : ''}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <FlatList
-        data={loading || error ? [] : data}
+        data={data}
         keyExtractor={(item, i) => item._id || String(i)}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: spacing.xs, paddingBottom: spacing.xxl }}
@@ -98,9 +136,7 @@ export default function MyAssessmentsScreen({ navigation }) {
             }}
           />
         }
-        renderItem={({ item }) =>
-          tab === 'Job Assessments' ? renderJobAssessment(item) : renderMyTest(item)
-        }
+        renderItem={({ item }) => (showResults ? renderResult(item) : renderCard(item))}
         ListEmptyComponent={
           loading ? (
             <LoadingState />
@@ -108,12 +144,20 @@ export default function MyAssessmentsScreen({ navigation }) {
             <ErrorState message={error} onRetry={load} />
           ) : (
             <EmptyState
-              emoji={tab === 'Job Assessments' ? '💼' : '📝'}
-              title={tab === 'Job Assessments' ? 'No job assessments' : 'No tests yet'}
+              emoji={showResults ? '🎯' : tab === 'Job Assessments' ? '💼' : '📝'}
+              title={
+                showResults
+                  ? 'No results yet'
+                  : tab === 'Job Assessments'
+                  ? 'No job assessments'
+                  : `No ${filter.toLowerCase()} tests`
+              }
               subtitle={
-                tab === 'Job Assessments'
+                showResults
+                  ? 'Your completed test results will show up here.'
+                  : tab === 'Job Assessments'
                   ? 'Assessments assigned by recruiters will appear here.'
-                  : 'Your practice and completed tests will show up here.'
+                  : 'Tests assigned to you will appear here.'
               }
             />
           )
@@ -123,8 +167,6 @@ export default function MyAssessmentsScreen({ navigation }) {
   );
 }
 
-// the results feed can contain many attempts of the same test; keep the most
-// recent attempt per test title for a cleaner "My Tests" list.
 function dedupeResults(list) {
   const seen = new Map();
   for (const r of list) {
@@ -134,3 +176,24 @@ function dedupeResults(list) {
   }
   return Array.from(seen.values()).sort((a, b) => (b.testEndedAt || 0) - (a.testEndedAt || 0));
 }
+
+const styles = StyleSheet.create({
+  filters: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: s(8),
+    paddingHorizontal: spacing.gutter,
+    marginBottom: spacing.sm,
+  },
+  filterChip: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    paddingHorizontal: s(12),
+    paddingVertical: s(6),
+  },
+  filterChipActive: { backgroundColor: colors.brand600, borderColor: colors.brand600 },
+  filterText: { fontSize: font(11.5), fontWeight: '700', color: colors.muted },
+  filterTextActive: { color: colors.white },
+});

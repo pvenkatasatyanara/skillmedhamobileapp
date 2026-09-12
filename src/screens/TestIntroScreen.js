@@ -73,7 +73,9 @@ export default function TestIntroScreen({ route, navigation }) {
         />
 
         <View style={{ paddingHorizontal: spacing.gutter, marginTop: spacing.lg }}>
-          <PrimaryButton title="I understand - Start test" onPress={() => navigation.goBack()} />
+          <PrimaryButton 
+          title="I understand - Start test" 
+          onPress={() => navigation.replace('Test',{ test, kind:route.params?.kind || 'test'})} />
         </View>
       </ScrollView>
     </Screen>

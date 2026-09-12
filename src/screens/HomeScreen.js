@@ -16,7 +16,7 @@ import { LoadingState } from '../components/StatePlaceholder';
 import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { fullNameOf, initialsOf, greeting } from '../utils/format';
+import { fullNameOf, initialsOf, greeting, stripHtml } from '../utils/format';
 
 const QUICK_ACTIONS = [
   { icon: 'library', label: 'Courses', route: 'Learn' },
@@ -165,8 +165,8 @@ export default function HomeScreen({ navigation }) {
           notifications.slice(0, 3).map((n) => (
             <ListCard
               key={n._id}
-              title={n.title || 'Notice'}
-              subtitle={n.message || n.type}
+              title={stripHtml(n.title) || 'Notice'}
+              subtitle={stripHtml(n.message) || n.type}
               iconVariant={chipVariantForPriority(n.priority)}
               renderIcon={(fg) => (
                 <Ionicons name={iconFor(n.type)} size={s(20)} color={fg} />

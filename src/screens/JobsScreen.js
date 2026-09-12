@@ -1,21 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { Screen, PageHeader, SegmentedControl, JobCard } from '../components';
 import { LoadingState, ErrorState, EmptyState } from '../components/StatePlaceholder';
 import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { isNewJob } from '../utils/jobs';
+import { isNewJob, buildAppliedJobs, appliedJobId, applicationStatusOf } from '../utils/jobs';
 
 const TABS = ['All Jobs', 'Applied Jobs', 'New Jobs'];
 
 export default function JobsScreen({ navigation }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [tab, setTab] = useState('All Jobs');
   const [search, setSearch] = useState('');
   const [jobs, setJobs] = useState([]);
+  const [appliedRaw, setAppliedRaw] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,10 +25,13 @@ export default function JobsScreen({ navigation }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await api.getAllJobs(token, { page: 1, limit: 50 });
-      setJobs(res?.data || []);
-    } catch (e) {
-      setError(e.message);
+      const [jobsRes, profRes] = await Promise.allSettled([
+        api.getAllJobs(token, { page: 1, limit: 50 }),
+        api.getStudentProfile(token, { includeJobs: true }),
+      ]);
+      if (jobsRes.status === 'fulfilled') setJobs(jobsRes.value?.data || []);
+      if (profRes.status === 'fulfilled') setAppliedRaw(profRes.value?.data?.appliedJobs || []);
+      if (jobsRes.status === 'rejected') setError(jobsRes.reason?.message || 'Could not load jobs.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -37,11 +42,28 @@ export default function JobsScreen({ navigation }) {
     load();
   }, [load]);
 
-  const applied = useMemo(() => jobs.filter((j) => j.isAssignedJob), [jobs]);
+  // Refresh applied state when returning from JobDetail (after applying).
+  useFocusEffect(
+    useCallback(() => {
+      if (!loading) {
+        api
+          .getStudentProfile(token, { includeJobs: true })
+          .then((r) => setAppliedRaw(r?.data?.appliedJobs || []))
+          .catch(() => {});
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token])
+  );
+
+  const appliedIds = useMemo(
+    () => new Set((appliedRaw || []).map(appliedJobId).filter(Boolean).map(String)),
+    [appliedRaw]
+  );
+  const appliedList = useMemo(() => buildAppliedJobs(appliedRaw, jobs), [appliedRaw, jobs]);
   const newJobs = useMemo(() => jobs.filter((j) => isNewJob(j)), [jobs]);
 
   const data = useMemo(() => {
-    const base = tab === 'Applied Jobs' ? applied : tab === 'New Jobs' ? newJobs : jobs;
+    const base = tab === 'Applied Jobs' ? appliedList : tab === 'New Jobs' ? newJobs : jobs;
     const q = search.trim().toLowerCase();
     if (!q) return base;
     return base.filter(
@@ -49,22 +71,23 @@ export default function JobsScreen({ navigation }) {
         (j.jobTitle || '').toLowerCase().includes(q) ||
         (j.companyName || '').toLowerCase().includes(q)
     );
-  }, [tab, jobs, applied, newJobs, search]);
+  }, [tab, jobs, appliedList, newJobs, search]);
+
+  const statusFor = (job) =>
+    job.applicationStatus ? applicationStatusOf(job) : { key: 'applied', label: 'Applied', variant: 'default' };
 
   return (
     <Screen edges={['top']}>
       <PageHeader title="Job Openings" showBack={false} />
 
-      {/* Stats bar (mirrors the web header) */}
       <View style={styles.stats}>
         <Stat value={jobs.length} label="Total jobs" />
         <View style={styles.statDivider} />
         <Stat value={newJobs.length} label="New" />
         <View style={styles.statDivider} />
-        <Stat value={applied.length} label="Applied" />
+        <Stat value={appliedList.length} label="Applied" />
       </View>
 
-      {/* Search */}
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={s(18)} color={colors.muted} />
         <TextInput
@@ -92,9 +115,23 @@ export default function JobsScreen({ navigation }) {
             }}
           />
         }
-        renderItem={({ item }) => (
-          <JobCard job={item} onPress={() => navigation.navigate('JobDetail', { job: item })} />
-        )}
+        renderItem={({ item }) => {
+          const applied = tab === 'Applied Jobs' || appliedIds.has(String(item._id));
+          return (
+            <JobCard
+              job={item}
+              applied={applied}
+              statusInfo={applied ? statusFor(item) : null}
+              onPress={() =>
+                navigation.navigate('JobDetail', {
+                  job: item,
+                  applied,
+                  studentId: user?._id,
+                })
+              }
+            />
+          );
+        }}
         ListEmptyComponent={
           loading ? (
             <LoadingState />
@@ -108,7 +145,7 @@ export default function JobsScreen({ navigation }) {
                 tab === 'Applied Jobs'
                   ? "You haven't applied to any jobs yet."
                   : tab === 'New Jobs'
-                  ? 'No new openings in the last week.'
+                  ? 'No new openings in the last 24 hours.'
                   : 'Check back soon for new openings.'
               }
             />
