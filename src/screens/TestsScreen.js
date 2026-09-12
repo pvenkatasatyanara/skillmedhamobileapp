@@ -1,17 +1,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, FlatList, RefreshControl } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Screen, PageHeader, SegmentedControl, ListCard, Chip } from '../components';
+import {
+  Screen,
+  PageHeader,
+  SegmentedControl,
+  ListCard,
+  Chip,
+  AssessmentCard,
+} from '../components';
 import { LoadingState, ErrorState, EmptyState } from '../components/StatePlaceholder';
 import { spacing, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { formatTestDuration, countTestQuestions, formatScore, timeAgo } from '../utils/format';
 
-export default function TestsScreen({ navigation }) {
+const TABS = ['My Tests', 'Job Assessments'];
+
+export default function MyAssessmentsScreen({ navigation }) {
   const { token, user } = useAuth();
-  const [tab, setTab] = useState('Assigned');
+  const [tab, setTab] = useState('My Tests');
   const [assigned, setAssigned] = useState([]);
   const [completed, setCompleted] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +37,7 @@ export default function TestsScreen({ navigation }) {
       if (aRes.status === 'fulfilled') setAssigned(aRes.value?.data || []);
       if (cRes.status === 'fulfilled') setCompleted(dedupeResults(cRes.value?.data || []));
       if (aRes.status === 'rejected' && cRes.status === 'rejected') {
-        setError(aRes.reason?.message || 'Could not load tests.');
+        setError(aRes.reason?.message || 'Could not load assessments.');
       }
     } finally {
       setLoading(false);
@@ -40,30 +49,21 @@ export default function TestsScreen({ navigation }) {
     load();
   }, [load]);
 
-  const data = tab === 'Assigned' ? assigned : completed;
+  const data = tab === 'Job Assessments' ? assigned : completed;
 
-  const renderAssigned = (item) => {
-    const duration = formatTestDuration(item);
-    const qCount = countTestQuestions(item);
-    const proctored = item.liveProctoring === 'Enable';
-    const meta = [duration, qCount ? `${qCount} Q` : null, proctored ? 'Proctored' : 'Not proctored']
-      .filter(Boolean)
-      .join(' • ');
-    return (
-      <ListCard
-        title={item.title || item.jobTitle || 'Assessment'}
-        subtitle={meta}
-        iconVariant={proctored ? 'pink' : 'green'}
-        renderIcon={(fg) => (
-          <Ionicons name={proctored ? 'shield-checkmark-outline' : 'document-text-outline'} size={s(20)} color={fg} />
-        )}
-        right={<Chip label="Start" variant={proctored ? 'red' : 'green'} />}
-        onPress={() => navigation.navigate('TestIntro', { test: item })}
-      />
-    );
-  };
+  const renderJobAssessment = (item) => (
+    <AssessmentCard
+      title={item.title || item.jobTitle}
+      description={item.shortDescription}
+      questions={countTestQuestions(item)}
+      duration={formatTestDuration(item)}
+      maxAttempts={item.honestRespondent?.maxAttempts || item.hrt?.maxLeaves}
+      seed={item._id || item.title}
+      onStart={() => navigation.navigate('TestIntro', { test: item })}
+    />
+  );
 
-  const renderCompleted = (item) => {
+  const renderMyTest = (item) => {
     const { correct, total, final, pct } = formatScore(item);
     const scoreLabel = pct != null ? `${pct}%` : `${final ?? 0} pts`;
     const variant = pct == null ? 'default' : pct >= 60 ? 'green' : pct >= 40 ? 'yellow' : 'red';
@@ -82,8 +82,8 @@ export default function TestsScreen({ navigation }) {
 
   return (
     <Screen edges={['top']}>
-      <PageHeader title="Tests" size="lg" />
-      <SegmentedControl options={['Assigned', 'Completed']} value={tab} onChange={setTab} />
+      <PageHeader title="My Assessments" size="lg" showBack={false} />
+      <SegmentedControl options={TABS} value={tab} onChange={setTab} />
       <FlatList
         data={loading || error ? [] : data}
         keyExtractor={(item, i) => item._id || String(i)}
@@ -98,7 +98,9 @@ export default function TestsScreen({ navigation }) {
             }}
           />
         }
-        renderItem={({ item }) => (tab === 'Assigned' ? renderAssigned(item) : renderCompleted(item))}
+        renderItem={({ item }) =>
+          tab === 'Job Assessments' ? renderJobAssessment(item) : renderMyTest(item)
+        }
         ListEmptyComponent={
           loading ? (
             <LoadingState />
@@ -106,12 +108,12 @@ export default function TestsScreen({ navigation }) {
             <ErrorState message={error} onRetry={load} />
           ) : (
             <EmptyState
-              emoji="☕"
-              title={tab === 'Assigned' ? 'No assigned tests' : 'No completed tests'}
+              emoji={tab === 'Job Assessments' ? '💼' : '📝'}
+              title={tab === 'Job Assessments' ? 'No job assessments' : 'No tests yet'}
               subtitle={
-                tab === 'Assigned'
-                  ? 'Tests assigned to you will appear here.'
-                  : 'Your past test results will show up here.'
+                tab === 'Job Assessments'
+                  ? 'Assessments assigned by recruiters will appear here.'
+                  : 'Your practice and completed tests will show up here.'
               }
             />
           )
@@ -122,7 +124,7 @@ export default function TestsScreen({ navigation }) {
 }
 
 // the results feed can contain many attempts of the same test; keep the most
-// recent attempt per test title for a cleaner "Completed" list.
+// recent attempt per test title for a cleaner "My Tests" list.
 function dedupeResults(list) {
   const seen = new Map();
   for (const r of list) {

@@ -9,7 +9,7 @@ import LoginScreen from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
 import CourseDetailScreen from '../screens/CourseDetailScreen';
 import CodingScreen from '../screens/CodingScreen';
-import TestsScreen from '../screens/TestsScreen';
+import MyAssessmentsScreen from '../screens/TestsScreen';
 import TestIntroScreen from '../screens/TestIntroScreen';
 import JobDetailScreen from '../screens/JobDetailScreen';
 import ResumeScreen from '../screens/ResumeScreen';
@@ -38,7 +38,7 @@ export default function RootNavigator() {
           <Stack.Screen name="MainTabs" component={TabNavigator} />
           <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
           <Stack.Screen name="Coding" component={CodingScreen} />
-          <Stack.Screen name="Tests" component={TestsScreen} />
+          <Stack.Screen name="Assessments" component={MyAssessmentsScreen} />
           <Stack.Screen name="TestIntro" component={TestIntroScreen} />
           <Stack.Screen name="JobDetail" component={JobDetailScreen} />
           <Stack.Screen name="Resume" component={ResumeScreen} />

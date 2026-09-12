@@ -13,7 +13,7 @@
       "package": "com.skillmedha.mobileapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "foregroundColor": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
@@ -22,7 +22,21 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-video"
+      "expo-video",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow SkillMedha to use your camera for AI mock interviews.",
+          "microphonePermission": "Allow SkillMedha to use your microphone to record interview answers.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "icloudContainerEnvironment": "Production"
+        }
+      ]
     ],
     "extra": {
       "eas": {

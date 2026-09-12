@@ -5,11 +5,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, PageHeader, Card, SectionHeader, Chip, ProgressBar, PrimaryButton } from '../components';
 import { colors, spacing, radius, font, s } from '../theme';
 import { formatCtc, stripHtml } from '../utils/format';
+import { isPlacementDrive, applicationStatusOf } from '../utils/jobs';
+
+const STATUS_COPY = {
+  pending: 'Your application is under review. We will notify you once there is an update.',
+  accepted: "Congratulations! You've been shortlisted. Watch for interview details.",
+  rejected: 'This application was not successful this time. Keep applying!',
+};
 
 export default function JobDetailsScreen({ route }) {
   const job = route.params?.job || {};
-  const [applied, setApplied] = useState(!!job.isAssignedJob);
+  const [applied, setApplied] = useState(!job.isAssignedJob);
 
+  const drive = isPlacementDrive(job);
+  const status = applied ? applicationStatusOf(job) : null;
   const meta = [job.city, formatCtc(job.ctc), job.jobType].filter(Boolean).join(' • ');
   const description = stripHtml(job.jobDescription) || 'No description provided.';
   const rounds = Array.isArray(job.interviewRounds) ? job.interviewRounds : [];
@@ -27,11 +36,28 @@ export default function JobDetailsScreen({ route }) {
               {[job.companyName, meta].filter(Boolean).join(' • ')}
             </Text>
             <View style={styles.badges}>
+              <Chip label={drive ? 'Placement Drive' : 'Company Opening'} variant={drive ? 'default' : 'green'} />
               {!!job.sector && <Chip label={job.sector} variant="default" />}
               {job.remoteWorkAllowed === 'yes' && <Chip label="Remote OK" variant="green" />}
             </View>
           </Card>
         </View>
+
+        {/* Application status (only for applied jobs) */}
+        {applied && status && (
+          <>
+            <SectionHeader title="Application status" />
+            <View style={{ paddingHorizontal: spacing.gutter }}>
+              <Card>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.fitLabel}>Current status</Text>
+                  <Chip label={status.label} variant={status.variant} />
+                </View>
+                <Text style={styles.fitNote}>{STATUS_COPY[status.key]}</Text>
+              </Card>
+            </View>
+          </>
+        )}
 
         {/* AI fit */}
         <SectionHeader title="AI resume match" />
@@ -107,7 +133,7 @@ export default function JobDetailsScreen({ route }) {
 
         <View style={{ paddingHorizontal: spacing.gutter, marginTop: spacing.lg }}>
           <PrimaryButton
-            title={applied ? 'Applied ✓' : 'Apply Now'}
+            title={applied ? `Applied • ${status?.label ?? 'Pending'}` : 'Apply Now'}
             disabled={applied}
             onPress={() => {
               setApplied(true);

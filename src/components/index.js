@@ -4,6 +4,8 @@ export { default as SectionHeader } from './SectionHeader';
 export { default as Chip, chipVariantForPriority } from './Chip';
 export { default as Card } from './Card';
 export { default as ListCard } from './ListCard';
+export { default as AssessmentCard } from './AssessmentCard';
+export { default as JobCard } from './JobCard';
 export { default as SegmentedControl } from './SegmentedControl';
 export { default as ProgressBar } from './ProgressBar';
 export { default as PrimaryButton } from './PrimaryButton';

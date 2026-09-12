@@ -52,7 +52,7 @@ export function greeting(date = new Date()) {
 export function formatCtc(ctc) {
   if (ctc == null || ctc === '') return null;
   const num = Number(ctc);
-  if (!Number.isNaN(num)) return `₹${num} LPA`;
+  if (!Number.isNaN(num)) return `${num} LPA`;
   return String(ctc);
 }
 
@@ -83,10 +83,14 @@ export function formatTestDuration(test) {
   return null;
 }
 
-// Total number of questions on an assessment (best-effort across shapes).
+// Total number of questions on an assessment (best effort across shapes).
 export function countTestQuestions(test) {
-  if (Array.isArray(test?.questionIds) && test.questionIds.length) return test.questionIds.length;
+  // Prefer the populated (deduped) questions list; `questionIds` can contain
+  // duplicate entries which would inflate the count.
   if (Array.isArray(test?.questions) && test.questions.length) return test.questions.length;
+  if (Array.isArray(test?.questionIds) && test.questionIds.length) {
+    return new Set(test.questionIds).size;
+  }
   if (Array.isArray(test?.skills)) {
     const sum = test.skills.reduce((acc, s) => acc + (Number(s.numQues) || 0), 0);
     if (sum) return sum;

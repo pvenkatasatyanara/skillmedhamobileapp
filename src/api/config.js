@@ -27,6 +27,13 @@ export const ENDPOINTS = {
   notices: '/getNoticeByStudent',
   // public
   publicStats: '/api/public/stats',
+  // Talk to AI - mock-interview transcription + feedback.
+  // The recorded answer is uploaded here (multipart/form-data) and the backend
+  // is expected to return { transcript, score, report/feedback, suggestions[] }.
+  // Point this at your own transcription/LLM service (e.g. Whisper + GPT, Azure
+  // Speech, or a custom endpoint). Leave as `null` to use the on-device
+  // heuristic fallback so the feature still works without a backend.
+  interviewAnalyze: null, // e.g. '/analyzeInterviewAnswer'
 };
 
 export default { API_BASE_URL, ENDPOINTS };

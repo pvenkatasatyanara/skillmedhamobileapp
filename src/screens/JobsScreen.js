@@ -1,19 +1,20 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Screen, PageHeader, SegmentedControl, ListCard, Chip } from '../components';
+import { Screen, PageHeader, SegmentedControl, JobCard } from '../components';
 import { LoadingState, ErrorState, EmptyState } from '../components/StatePlaceholder';
-import { colors, spacing, font, s } from '../theme';
+import { colors, spacing, radius, font, s } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { formatCtc } from '../utils/format';
+import { isNewJob } from '../utils/jobs';
 
-const TABS = ['Openings', 'Applied', 'Drives'];
+const TABS = ['All Jobs', 'Applied Jobs', 'New Jobs'];
 
 export default function JobsScreen({ navigation }) {
   const { token } = useAuth();
-  const [tab, setTab] = useState('Openings');
+  const [tab, setTab] = useState('All Jobs');
+  const [search, setSearch] = useState('');
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,7 +23,7 @@ export default function JobsScreen({ navigation }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await api.getAllJobs(token, { page: 1, limit: 30 });
+      const res = await api.getAllJobs(token, { page: 1, limit: 50 });
       setJobs(res?.data || []);
     } catch (e) {
       setError(e.message);
@@ -36,16 +37,45 @@ export default function JobsScreen({ navigation }) {
     load();
   }, [load]);
 
-  const openings = jobs.filter((j) => (j.status || 'active') === 'active');
-  const applied = jobs.filter((j) => j.isAssignedJob);
-  const data = tab === 'Openings' ? openings : tab === 'Applied' ? applied : [];
+  const applied = useMemo(() => jobs.filter((j) => j.isAssignedJob), [jobs]);
+  const newJobs = useMemo(() => jobs.filter((j) => isNewJob(j)), [jobs]);
 
-  const subtitleFor = (j) =>
-    [j.city, formatCtc(j.ctc), j.jobType].filter(Boolean).join(' • ');
+  const data = useMemo(() => {
+    const base = tab === 'Applied Jobs' ? applied : tab === 'New Jobs' ? newJobs : jobs;
+    const q = search.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(
+      (j) =>
+        (j.jobTitle || '').toLowerCase().includes(q) ||
+        (j.companyName || '').toLowerCase().includes(q)
+    );
+  }, [tab, jobs, applied, newJobs, search]);
 
   return (
     <Screen edges={['top']}>
-      <PageHeader title="Jobs & Placements" showBack={false} />
+      <PageHeader title="Job Openings" showBack={false} />
+
+      {/* Stats bar (mirrors the web header) */}
+      <View style={styles.stats}>
+        <Stat value={jobs.length} label="Total jobs" />
+        <View style={styles.statDivider} />
+        <Stat value={newJobs.length} label="New" />
+        <View style={styles.statDivider} />
+        <Stat value={applied.length} label="Applied" />
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={s(18)} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by job position, company..."
+          placeholderTextColor={colors.muted}
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
       <SegmentedControl options={TABS} value={tab} onChange={setTab} />
 
       <FlatList
@@ -63,14 +93,7 @@ export default function JobsScreen({ navigation }) {
           />
         }
         renderItem={({ item }) => (
-          <ListCard
-            title={item.jobTitle || 'Job opening'}
-            subtitle={`${item.companyName || 'Company'}${subtitleFor(item) ? ` • ${subtitleFor(item)}` : ''}`}
-            iconVariant="green"
-            renderIcon={(fg) => <Ionicons name="business-outline" size={s(20)} color={fg} />}
-            right={<Chip label={item.isAssignedJob ? 'Applied' : 'View'} variant="green" />}
-            onPress={() => navigation.navigate('JobDetail', { job: item })}
-          />
+          <JobCard job={item} onPress={() => navigation.navigate('JobDetail', { job: item })} />
         )}
         ListEmptyComponent={
           loading ? (
@@ -79,13 +102,13 @@ export default function JobsScreen({ navigation }) {
             <ErrorState message={error} onRetry={load} />
           ) : (
             <EmptyState
-              emoji={tab === 'Drives' ? '🏫' : '💼'}
-              title={tab === 'Drives' ? 'No drives scheduled' : `No ${tab.toLowerCase()}`}
+              emoji={tab === 'Applied Jobs' ? '📋' : '💼'}
+              title={`No ${tab.toLowerCase()}`}
               subtitle={
-                tab === 'Applied'
+                tab === 'Applied Jobs'
                   ? "You haven't applied to any jobs yet."
-                  : tab === 'Drives'
-                  ? 'On-campus drives will show up here.'
+                  : tab === 'New Jobs'
+                  ? 'No new openings in the last week.'
                   : 'Check back soon for new openings.'
               }
             />
@@ -96,4 +119,44 @@ export default function JobsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({});
+function Stat({ value, label }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  stats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.gutter,
+    marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+  },
+  stat: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: font(18), fontWeight: '800', color: colors.ink },
+  statLabel: { fontSize: font(10.5), color: colors.muted, marginTop: s(2) },
+  statDivider: { width: 1, height: s(28), backgroundColor: colors.line },
+
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.gutter,
+    marginBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    height: s(46),
+  },
+  searchInput: { flex: 1, fontSize: font(13.5), color: colors.ink, paddingVertical: 0 },
+});

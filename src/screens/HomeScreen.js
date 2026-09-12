@@ -21,12 +21,11 @@ import { fullNameOf, initialsOf, greeting } from '../utils/format';
 const QUICK_ACTIONS = [
   { icon: 'library', label: 'Courses', route: 'Learn' },
   { icon: 'flash', label: 'Practice', route: 'Practice' },
-  { icon: 'document-text', label: 'Tests', route: 'Tests' },
+  { icon: 'clipboard', label: 'My Assessments', route: 'Assessments' },
   { icon: 'briefcase', label: 'Jobs', route: 'Jobs' },
   { icon: 'reader', label: 'Resume', route: 'Resume' },
   { icon: 'school', label: 'Internships', route: 'Learn' },
-  { icon: 'book', label: 'Library', route: 'Learn' },
-  { icon: 'sparkles', label: 'Ask AI', route: 'AI' },
+  { icon: 'chatbubbles', label: 'Talk to AI', route: 'AI' },
 ];
 
 export default function HomeScreen({ navigation }) {
@@ -135,7 +134,7 @@ export default function HomeScreen({ navigation }) {
               <View style={styles.qaIc}>
                 <Ionicons name={`${qa.icon}-outline`} size={s(24)} color={colors.brand700} />
               </View>
-              <Text style={styles.qaLabel}>{qa.label}</Text>
+              <Text style={styles.qaLabel} numberOfLines={2}>{qa.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -215,7 +214,7 @@ export default function HomeScreen({ navigation }) {
           activeOpacity={0.85}
           onPress={() => navigation.navigate('AI')}
         >
-          <Ionicons name="sparkles" size={s(24)} color={colors.white} />
+          <Ionicons name="chatbubbles" size={s(24)} color={colors.white} />
         </TouchableOpacity>
       </ScrollView>
     </Screen>
@@ -322,7 +321,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qaLabel: { fontSize: font(11), fontWeight: '600', color: '#334155' },
+  qaLabel: { fontSize: font(11), fontWeight: '600', color: '#334155', textAlign: 'center' },
 
   stat3: { flexDirection: 'row', paddingHorizontal: spacing.gutter, gap: spacing.md },
   stat: {
